@@ -109,6 +109,11 @@ export class ImageCache {
             })).promise.then(() => {
                 cache.task = null;
                 cache.path = path;
+                return fs.exists(path);
+            }).then((exists: boolean) => {
+                if (!exists) {
+                    return;
+                }
                 this.notify(uri, cache);
             }).catch(() => {
                 cache.task = null;
