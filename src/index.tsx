@@ -19,7 +19,7 @@ export type CacheEntry = {
     task?: any;
 };
 
-export type CacheHandler = (path: string, entry: CacheEntry) => void;
+export type CacheHandler = (path: string) => void;
 
 export class ImageCache {
 
@@ -59,7 +59,7 @@ export class ImageCache {
                 source,
                 handlers: [handler],
                 immutable: immutable === true,
-                path: undefined
+                path: immutable === true ? this.getPath(uri, immutable) : undefined
             };
         } else {
             this.cache[uri].handlers.push(handler);
@@ -114,7 +114,7 @@ export class ImageCache {
                 if (!exists) {
                     return;
                 }
-                this.notify(uri, cache);
+                this.notify(uri);
             }).catch(() => {
                 cache.task = null;
                 // Parts of the image may have been downloaded already, (see https://github.com/wkh237/react-native-fetch-blob/issues/331)
@@ -129,7 +129,7 @@ export class ImageCache {
             // We check here if IOS didn't delete the cache content
             fs.exists(cache.path).then((exists: boolean) => {
                 if (exists) {
-                    this.notify(uri, cache);
+                    this.notify(uri);
                 } else {
                     this.download(cache);
                 }
@@ -140,10 +140,10 @@ export class ImageCache {
 
     }
 
-    private notify(uri: string, entry: CacheEntry) {
+    private notify(uri: string) {
         const handlers = this.cache[uri].handlers;
         handlers.forEach(handler => {
-            handler(this.cache[uri].path as string, entry);
+            handler(this.cache[uri].path as string);
         });
     }
 }
@@ -165,7 +165,7 @@ export abstract class BaseCachedImage<P extends CachedImageProps> extends Compon
 
     private uri: string;
 
-    private handler: CacheHandler = (path: string, ) => {
+    private handler: CacheHandler = (path: string) => {
         this.setState({ path });
     }
 
