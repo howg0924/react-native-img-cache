@@ -8,6 +8,8 @@ const FILE_PREFIX = Platform.OS === "ios" ? "" : "file://";
 export class ImageCache {
     constructor() {
         this.cache = {};
+        // need to create the dir for cache files. if it does not exist, fs.downloadFile() will fail.
+        fs.mkdir(BASE_DIR);
     }
     getPath(uri, immutable) {
         let path = uri.substring(uri.lastIndexOf("/"));

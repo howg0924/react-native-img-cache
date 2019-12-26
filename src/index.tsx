@@ -36,7 +36,10 @@ export class ImageCache {
 
     private static instance: ImageCache;
 
-    private constructor() {}
+    private constructor() {
+        // need to create the dir for cache files. if it does not exist, fs.downloadFile() will fail.
+        fs.mkdir(BASE_DIR);
+    }
 
     static get(): ImageCache {
         if (!ImageCache.instance) {
