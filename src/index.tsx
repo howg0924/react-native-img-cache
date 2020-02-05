@@ -234,7 +234,7 @@ export class CachedImage extends BaseCachedImage<CachedImageProps> {
 
     render() {
         const props = this.getProps();
-        if ((props.source === null) || (props.source === undefined) || ((typeof props.source === 'object') && (typeof props.source.uri !== 'string')))
+        if ((Platform.OS === 'android') && ((props.source === null) || (props.source === undefined) || ((typeof props.source === 'object') && (typeof props.source.uri !== 'string'))))
             return null;
         if (React.Children.count(this.props.children) > 0) {
             console.warn("Using <CachedImage> with children is deprecated, use <CachedImageBackground> instead.");
@@ -247,7 +247,7 @@ export class CachedImageBackground extends BaseCachedImage<CachedImageProps> {
 
     render() {
         const props = this.getProps();
-        if ((props.source === null) || (props.source === undefined) || ((typeof props.source === 'object') && (typeof props.source.uri !== 'string')))
+        if ((Platform.OS === 'android') && ((props.source === null) || (props.source === undefined) || ((typeof props.source === 'object') && (typeof props.source.uri !== 'string'))))
             return null;
         return <ImageBackground {...props}>{this.props.children}</ImageBackground>;
     }
@@ -259,7 +259,7 @@ export class CustomCachedImage<P extends CustomCachedImageProps> extends BaseCac
         const {component} = this.props;
         const props = this.getProps();
         const Component = component;
-        if ((props.source === null) || (props.source === undefined) || ((typeof props.source === 'object') && (typeof props.source.uri !== 'string')))
+        if ((Platform.OS === 'android') && ((props.source === null) || (props.source === undefined) || ((typeof props.source === 'object') && (typeof props.source.uri !== 'string'))))
             return null;
         return <Component {...props}>{this.props.children}</Component>;
     }
