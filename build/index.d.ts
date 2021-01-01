@@ -17,6 +17,7 @@ export declare class ImageCache {
     private constructor();
     static get(): ImageCache;
     private cache;
+    cacheUri(uri: string): Promise<{}>;
     clear(): any;
     on(source: CachedImageURISource, handler: CacheHandler, immutable?: boolean): void;
     dispose(uri: string, handler: CacheHandler): void;

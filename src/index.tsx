@@ -50,6 +50,19 @@ export class ImageCache {
 
     private cache: { [uri: string]: CacheEntry } = {};
 
+    cacheUri(uri: string) {
+        const source = { uri };
+
+        return new Promise((resolve, reject) => {
+            const handler = () => {
+                this.dispose(uri, handler);
+                resolve();
+            }
+
+            this.on(source, handler, true);
+        });
+    }
+
     clear() {
         this.cache = {};
         return fs.unlink(BASE_DIR);
