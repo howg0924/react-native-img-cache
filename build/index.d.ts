@@ -11,12 +11,16 @@ export declare type CacheEntry = {
     task?: any;
 };
 export declare type CacheHandler = (path: string) => void;
+export declare type UriMapper = (uri: string) => string;
 export declare class ImageCache {
     private getPath;
     private static instance;
     private constructor();
     static get(): ImageCache;
     private cache;
+    private uriMapper;
+    setUriMapper(p_fUriMapper: UriMapper): void;
+    clearUriMapper(): void;
     cacheUri(uri: string): Promise<{}>;
     clear(): any;
     on(source: CachedImageURISource, handler: CacheHandler, immutable?: boolean): void;

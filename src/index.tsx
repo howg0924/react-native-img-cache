@@ -20,15 +20,17 @@ export type CacheEntry = {
 };
 
 export type CacheHandler = (path: string) => void;
+export type UriMapper = (uri: string) => string;
 
 export class ImageCache {
 
     private getPath(uri: string, immutable?: boolean): string {
-        let path = uri.substring(uri.lastIndexOf("/"));
+        const mappedUri = this.uriMapper ? this.uriMapper(uri) : uri;
+        let path = mappedUri.substring(mappedUri.lastIndexOf("/"));
         path = path.indexOf("?") === -1 ? path : path.substring(path.lastIndexOf("."), path.indexOf("?"));
         const ext = path.indexOf(".") === -1 ? ".jpg" : path.substring(path.indexOf("."));
         if (immutable === true) {
-            return BASE_DIR + "/" + SHA1(uri) + ext;
+            return BASE_DIR + "/" + SHA1(mappedUri) + ext;
         } else {
             return BASE_DIR + "/" + s4() + s4() + "-" + s4() + "-" + s4() + "-" + s4() + "-" + s4() + s4() + s4() + ext;
         }
@@ -49,6 +51,15 @@ export class ImageCache {
     }
 
     private cache: { [uri: string]: CacheEntry } = {};
+    private uriMapper: UriMapper | undefined;
+
+    setUriMapper(p_fUriMapper: UriMapper) {
+        this.uriMapper = p_fUriMapper;
+    }
+
+    clearUriMapper() {
+        this.uriMapper = undefined;
+    }
 
     cacheUri(uri: string) {
         const source = { uri };
