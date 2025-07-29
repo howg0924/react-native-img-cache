@@ -2,6 +2,8 @@ import React, { Component } from "react";
 import { Image, ImageBackground, Platform } from "react-native";
 import fs from "react-native-fs";
 const SHA1 = require("crypto-js/sha1");
+const isObject = (val) => ((val != null) && (typeof val === 'object') && (Array.isArray(val) === false));
+const isCachedImageURISource = (val) => (isObject(val) && (typeof val.uri === 'string'));
 const s4 = () => Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1);
 const BASE_DIR = fs.CachesDirectoryPath + "/react-native-img-cache";
 const FILE_PREFIX = Platform.OS === "ios" ? "" : "file://";
@@ -40,7 +42,7 @@ export class ImageCache {
         return new Promise((resolve, reject) => {
             const handler = () => {
                 this.dispose(uri, handler);
-                resolve();
+                resolve(undefined);
             };
             this.on(source, handler, true);
         });
@@ -150,7 +152,7 @@ export class BaseCachedImage extends Component {
         }
     }
     observe(source, mutable) {
-        if (source.uri !== this.uri) {
+        if (isObject(source) && (source.uri !== this.uri)) {
             this.dispose();
             this.uri = source.uri;
             ImageCache.get().on(source, this.handler, !mutable);
@@ -159,7 +161,7 @@ export class BaseCachedImage extends Component {
     getProps() {
         const props = {};
         Object.keys(this.props).forEach(prop => {
-            if (prop === "source" && this.props.source.uri) {
+            if (prop === "source" && isObject(this.props.source) && this.props.source.uri) {
                 props["source"] = this.state.path ? { uri: FILE_PREFIX + this.state.path } : {};
             }
             else if (["mutable", "component"].indexOf(prop) === -1) {
@@ -180,14 +182,14 @@ export class BaseCachedImage extends Component {
         const { mutable } = this.props;
         const source = this.checkSource(this.props.source);
         this.setState({ path: undefined });
-        if (typeof (source) !== "number" && source.uri) {
+        if (isCachedImageURISource(source)) {
             this.observe(source, mutable === true);
         }
     }
     UNSAFE_componentWillReceiveProps(nextProps) {
         const { mutable } = nextProps;
         const source = this.checkSource(nextProps.source);
-        if (typeof (source) !== "number" && source.uri) {
+        if (isCachedImageURISource(source)) {
             this.observe(source, mutable === true);
         }
     }

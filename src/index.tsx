@@ -3,6 +3,8 @@ import {Image, ImageBackground, ImageProperties, ImageURISource, Platform} from 
 import fs from "react-native-fs";
 const SHA1 = require("crypto-js/sha1");
 
+const isObject = (val: unknown): val is Record<string, unknown> => ((val != null) && (typeof val === 'object') && (Array.isArray(val) === false));
+const isCachedImageURISource = (val: unknown): val is CachedImageURISource => (isObject(val) && (typeof val.uri === 'string'));
 const s4 = () => Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1);
 const BASE_DIR = fs.CachesDirectoryPath + "/react-native-img-cache";
 const FILE_PREFIX = Platform.OS === "ios" ? "" : "file://";
@@ -67,7 +69,7 @@ export class ImageCache {
         return new Promise((resolve, reject) => {
             const handler = () => {
                 this.dispose(uri, handler);
-                resolve();
+                resolve(undefined);
             }
 
             this.on(source, handler, true);
@@ -177,7 +179,7 @@ export class ImageCache {
 
 export interface CachedImageProps extends ImageProperties {
     mutable?: boolean;
-
+    children?: React.ReactNode;
 }
 
 export interface CustomCachedImageProps extends CachedImageProps {
@@ -203,7 +205,7 @@ export abstract class BaseCachedImage<P extends CachedImageProps> extends Compon
     }
 
     private observe(source: CachedImageURISource, mutable: boolean) {
-        if (source.uri !== this.uri) {
+        if (isObject(source) && (source.uri !== this.uri)) {
             this.dispose();
             this.uri = source.uri;
             ImageCache.get().on(source, this.handler, !mutable);
@@ -213,7 +215,7 @@ export abstract class BaseCachedImage<P extends CachedImageProps> extends Compon
     protected getProps() {
         const props: any = {};
         Object.keys(this.props).forEach(prop => {
-            if (prop === "source" && (this.props as any).source.uri) {
+            if (prop === "source" && isObject(this.props.source) && (this.props as any).source.uri) {
                 props["source"] = this.state.path ? {uri: FILE_PREFIX + this.state.path} : {};
             } else if (["mutable", "component"].indexOf(prop) === -1) {
                 props[prop] = (this.props as any)[prop];
@@ -236,7 +238,7 @@ export abstract class BaseCachedImage<P extends CachedImageProps> extends Compon
         const {mutable} = this.props;
         const source = this.checkSource(this.props.source);
         this.setState({ path: undefined });
-        if (typeof(source) !== "number" && source.uri) {
+        if (isCachedImageURISource(source)) {
             this.observe(source as CachedImageURISource, mutable === true);
         }
     }
@@ -244,7 +246,7 @@ export abstract class BaseCachedImage<P extends CachedImageProps> extends Compon
     UNSAFE_componentWillReceiveProps(nextProps: P) {
         const {mutable} = nextProps;
         const source = this.checkSource(nextProps.source);
-        if (typeof(source) !== "number" && source.uri) {
+        if (isCachedImageURISource(source)) {
             this.observe(source as CachedImageURISource, mutable === true);
         }
     }

@@ -1,4 +1,4 @@
-import { Component } from "react";
+import React, { Component } from "react";
 import { ImageProperties, ImageURISource } from "react-native";
 export interface CachedImageURISource extends ImageURISource {
     uri: string;
@@ -21,7 +21,7 @@ export declare class ImageCache {
     private uriMapper;
     setUriMapper(p_fUriMapper: UriMapper): void;
     clearUriMapper(): void;
-    cacheUri(uri: string): Promise<{}>;
+    cacheUri(uri: string): Promise<unknown>;
     clear(): any;
     on(source: CachedImageURISource, handler: CacheHandler, immutable?: boolean): void;
     dispose(uri: string, handler: CacheHandler): void;
@@ -33,6 +33,7 @@ export declare class ImageCache {
 }
 export interface CachedImageProps extends ImageProperties {
     mutable?: boolean;
+    children?: React.ReactNode;
 }
 export interface CustomCachedImageProps extends CachedImageProps {
     component: new () => Component<any, any>;
@@ -47,16 +48,16 @@ export declare abstract class BaseCachedImage<P extends CachedImageProps> extend
     private observe;
     protected getProps(): any;
     private checkSource;
-    componentWillMount(): void;
-    componentWillReceiveProps(nextProps: P): void;
+    UNSAFE_componentWillMount(): void;
+    UNSAFE_componentWillReceiveProps(nextProps: P): void;
     componentWillUnmount(): void;
 }
 export declare class CachedImage extends BaseCachedImage<CachedImageProps> {
-    render(): JSX.Element | null;
+    render(): React.JSX.Element | null;
 }
 export declare class CachedImageBackground extends BaseCachedImage<CachedImageProps> {
-    render(): JSX.Element | null;
+    render(): React.JSX.Element | null;
 }
 export declare class CustomCachedImage<P extends CustomCachedImageProps> extends BaseCachedImage<P> {
-    render(): JSX.Element | null;
+    render(): React.JSX.Element | null;
 }
