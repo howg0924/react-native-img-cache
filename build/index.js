@@ -6,8 +6,24 @@ const isObject = (val) => ((val != null) && (typeof val === 'object') && (Array.
 const isCachedImageURISource = (val) => (isObject(val) && (typeof val.uri === 'string'));
 const s4 = () => Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1);
 const BASE_DIR = fs.CachesDirectoryPath + "/react-native-img-cache";
+// 下載中的暫存檔一律放在這個子目錄，不跟正式快取檔混在 BASE_DIR 裡。
+//
+// 原因：快取檔只增不減（不做任何淘汰），久用的使用者 BASE_DIR 會有好幾萬個檔，
+// 而 fs.readDir() 在 iOS 要對每個檔案各做一次 attributesOfItemAtPath，實測 3.7 萬檔約 6.4 秒，
+// 更糟的是 react-native-fs 的 iOS 端所有呼叫共用同一條串列佇列，readDir 跑完之前
+// 其他所有 RNFS 呼叫（InitScreen 的 mkdir、每張圖的 exists／downloadFile）全部排在後面，
+// App 就卡在啟動畫面。開機要清暫存檔只能掃這個永遠很小的子目錄，
+// 絕對不可以再對 BASE_DIR 做 readDir（或任何會隨快取檔數量變慢的目錄走訪）。
+//
+// 子目錄名稱 "tmp" 不會跟快取檔撞名：快取檔名是 SHA1 或 UUID 樣式再加副檔名。
+const TMP_DIR = BASE_DIR + "/tmp";
 const FILE_PREFIX = Platform.OS === "ios" ? "" : "file://";
 const TMP_SUFFIX = ".tmp";
+// 本次啟動（這個模組實例）的識別碼，每個暫存檔名都以它開頭。開機清理只刪「不是本次前綴」的檔案，
+// 見 removeStaleTempFiles()。
+const SESSION_ID = s4() + s4() + s4();
+// 同一個 session 內的流水號，保證每次下載的暫存檔名都不一樣，見 download()。
+let tmpSeq = 0;
 // 這些預設值可以被 config 覆寫，見 setOptions()。
 // config 裡沒有指定的項目就沿用這裡的值。
 const DEFAULT_OPTIONS = {
@@ -75,7 +91,10 @@ export class ImageCache {
         this.pendingQueue = [];
         this.activeDownloadCount = 0;
         // need to create the dir for cache files. if it does not exist, fs.downloadFile() will fail.
-        fs.mkdir(BASE_DIR)
+        // 建 TMP_DIR 會連 BASE_DIR 一起建好（react-native-fs 的 mkdir 在 iOS 是
+        // createDirectoryAtPath:withIntermediateDirectories:YES、Android 是 File.mkdirs()），
+        // 所以不必另外 mkdir(BASE_DIR)；目錄已存在時兩個平台都是成功。
+        fs.mkdir(TMP_DIR)
             .then(() => this.removeStaleTempFiles())
             .catch(() => undefined);
     }
@@ -131,7 +150,8 @@ export class ImageCache {
         this.cache = {};
         this.pendingQueue = [];
         // 砍掉整個目錄之後一定要補回來，否則之後每一次 downloadFile() 都會失敗。
-        return fs.unlink(BASE_DIR).then(() => fs.mkdir(BASE_DIR));
+        // 暫存檔的子目錄也一起補（mkdir 會連 BASE_DIR 一起建）。
+        return fs.unlink(BASE_DIR).then(() => fs.mkdir(TMP_DIR));
     }
     on(source, handler, immutable, errorHandler, priority) {
         const { uri } = source;
@@ -196,7 +216,12 @@ export class ImageCache {
         // 快取路徑（例如 apiprod2/apiprod3 都對到 apiprod），那是兩個不同的 cache entry
         // 卻共用同一個 path。若暫存檔名固定，兩邊會同時寫同一個檔，先完成的 rename 之後
         // 另一邊的 fd 仍指著同一個 inode 繼續寫，正式快取檔就被寫壞了。
-        const tmpPath = path + "." + s4() + s4() + TMP_SUFFIX;
+        //
+        // 檔名不必（也不再）由 path 衍生：暫存檔放在 TMP_DIR，和正式路徑在同一個磁碟區，
+        // 所以下面的 moveFile 仍是 rename，成本可忽略。名稱是「本次啟動的 SESSION_ID + 流水號」，
+        // 流水號保證同一個 session 內絕不重複，SESSION_ID 讓開機清理認得出哪些是這次的。
+        tmpSeq++;
+        const tmpPath = TMP_DIR + "/" + SESSION_ID + "-" + tmpSeq + TMP_SUFFIX;
         cache.downloading = true;
         this.activeDownloadCount++;
         let settled = false;
@@ -223,6 +248,11 @@ export class ImageCache {
             }
             // Parts of the image may have been downloaded already, (see https://github.com/wkh237/react-native-fetch-blob/issues/331)
             fs.unlink(tmpPath).catch(() => undefined);
+            // TMP_DIR 只在建構子建立一次。它之後若不見了（App 執行中系統清掉 Caches、建構子的
+            // mkdir 遇到暫時性錯誤被吞掉），每一次 downloadFile 都會因目的目錄不存在而失敗，
+            // 重試全部用完後圖片就一直空白到下次重啟。這裡冪等地補建（已存在時兩個平台都是成功、
+            // 成本很低），重試（至少 retryDelay 之後）就有機會成功。
+            fs.mkdir(TMP_DIR).catch(() => undefined);
             done();
             this.onDownloadFailed(cache, err);
         };
@@ -420,9 +450,34 @@ export class ImageCache {
     }
     removeStaleTempFiles() {
         // 上一次 process 被殺掉時留下來的暫存檔，開機時清一清。
-        return fs.readDir(BASE_DIR).then((items) => {
+        //
+        // 只掃 TMP_DIR。這個目錄平常是空的、最多只有上次被殺掉時正在下載的那幾個檔，
+        // 不論 BASE_DIR 累積了多少快取檔都一樣快；絕對不能改回 readDir(BASE_DIR)，
+        // 原因見 TMP_DIR 的註解。
+        //
+        // 只刪「不是本次 SESSION_ID 開頭」的檔案，而不是刪光所有 .tmp。要防的競態：
+        // ImageCache.get() 的第一次呼叫也可能來自 on()（例如沒有人先呼叫 setUriMapper），
+        // 那一輪的下載可能與這裡的 readDir／unlink 交錯 —— readDir 是等 mkdir 完成後才發出的，
+        // 而 Android 的下載是在 Downloader 自己的 thread 寫檔，與 readDir 之間沒有先後保證，
+        // 所以 readDir 有可能列到剛開始下載的暫存檔，刪掉它會讓 moveFile 失敗而白白重下載一次。
+        // 用 SESSION_ID 前綴過濾幾乎沒有成本，就把這個可能性整個排除。
+        // （mkdir(TMP_DIR) 本身不需要額外防護：兩個平台的 RNFS 呼叫都依呼叫順序執行，
+        // mkdir 一定在之後才發出的 downloadFile 之前完成。）
+        //
+        // 邊界：上一個 process 留下的檔案，前綴必然不同（SESSION_ID 每次啟動重新隨機產生），
+        // 所以會被清掉；本次下載的檔案前綴必然相同，所以不會被刪。JS 重載（CodePush 重啟、
+        // dev reload）也會產生新的 SESSION_ID，舊 JS 環境留下的下載已經沒有人在等結果，清掉是對的。
+        //
+        // 不處理的部分：這個子目錄出現之前，暫存檔是寫在 BASE_DIR 根目錄、與快取檔同一層
+        // （副檔名 .tmp）。那些舊檔現在不會再被掃到、也就不會被清掉 —— 刻意不為它保留
+        // 會隨快取檔數量變慢的掃描；殘留的舊檔只佔一點空間，不影響功能。
+        // （哪些版本寫過這種檔案、實測過哪些裝置沒有殘留，見 docs/agent/download-pipeline.md 第七節。）
+        const sOwnPrefix = SESSION_ID + "-";
+        return fs.readDir(TMP_DIR).then((items) => {
             items.forEach(item => {
-                if (item.name && (item.name.substr(-TMP_SUFFIX.length) === TMP_SUFFIX)) {
+                if (item.name
+                    && (item.name.substr(-TMP_SUFFIX.length) === TMP_SUFFIX)
+                    && (item.name.indexOf(sOwnPrefix) !== 0)) {
                     fs.unlink(item.path).catch(() => undefined);
                 }
             });
